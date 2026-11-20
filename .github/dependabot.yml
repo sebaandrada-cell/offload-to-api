@@ -4,6 +4,11 @@ updates:
     directory: /plugins/offload-to-api/scripts
     schedule:
       interval: weekly
+    ignore:
+      # anthropic 1.x+ requires Python 3.10+, but install.sh uses the system python3
+      # (3.9 on macOS). Major SDK upgrades are a deliberate migration, not an auto-bump.
+      - dependency-name: anthropic
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

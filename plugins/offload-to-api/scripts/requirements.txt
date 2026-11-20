@@ -1,1 +1,3 @@
-anthropic>=0.125.0
+# <1: anthropic 1.x+ requires Python 3.10+ and has breaking changes; the scripts
+# target the macOS system Python (3.9). Lift this only with a deliberate migration.
+anthropic>=0.125.0,<1

@@ -1,0 +1,22 @@
+# Secrets and local state
+.env
+.env.*
+!.env.example
+usage.json
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Tool outputs (may contain personal data)
+*.summary.md
+*.answer.md
+*.changes.md
+*.map.json
+table.csv
+
+# macOS
+.DS_Store

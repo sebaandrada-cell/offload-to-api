@@ -1,0 +1,16 @@
+{
+  "name": "offload-to-api",
+  "owner": {
+    "name": "sebaandrada-cell"
+  },
+  "metadata": {
+    "description": "Save your Claude subscription quota: offload long PDFs, large logs and config diffs to cheap Claude API calls."
+  },
+  "plugins": [
+    {
+      "name": "offload-to-api",
+      "source": "./plugins/offload-to-api",
+      "description": "Offload long PDFs, large logs and config diffs to cheap Claude API calls instead of your subscription quota."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "offload-to-api",
+  "version": "0.1.0",
+  "description": "Offloads reading of long PDFs, large logs and config diffs to small local scripts that use cheap Claude API calls (Haiku by default), so your Claude subscription quota is not spent reading big files.",
+  "author": {
+    "name": "sebaandrada-cell"
+  },
+  "repository": "https://github.com/sebaandrada-cell/offload-to-api",
+  "license": "MIT",
+  "keywords": ["claude-api", "cost", "pdf", "logs", "config-diff", "quota"]
+}

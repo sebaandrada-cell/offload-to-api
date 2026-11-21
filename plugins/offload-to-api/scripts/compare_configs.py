@@ -134,7 +134,7 @@ def main():
     print("  Analysing changes...", file=sys.stderr)
     # Judging risk benefits from reasoning: use the model's default effort here.
     report, usd, stop = common.call(client, args.model, prompt, MAX_OUTPUT_TOKENS,
-                                    output_config={"effort": "medium"})
+                                    output_config={"effort": "medium"}, reserve=estimate)
     if stop == "refusal":
         sys.exit(f"The model declined the request (cost {usd:.4f} USD). Try --anonymize or another model.")
 

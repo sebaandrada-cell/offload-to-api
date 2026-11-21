@@ -7,21 +7,46 @@ the daily spend ledger and the macOS file picker.
 Everything the tools keep between runs (spend ledger, optional .env) lives in
 ~/.offload-to-api/ (override with OFFLOAD_HOME), never inside the plugin folder.
 """
+import contextlib
 import datetime as dt
 import json
+import math
 import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows has no fcntl: the ledger then works without the lock
+    fcntl = None
 
 HOME = Path(os.environ.get("OFFLOAD_HOME", Path.home() / ".offload-to-api")).expanduser()
 ENV_FILE = HOME / ".env"
 LEDGER = HOME / "usage.json"
+LEDGER_KEEP_DAYS = 60   # older days are dropped from the ledger
+
+
+def _env_amount(name, default, allow_zero=False):
+    """Read a USD amount from the environment. Rejects nan, inf, negative and non-numeric values:
+    float() accepts "nan", and a cap of nan would silently disable every comparison."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        sys.exit(f"{name} must be a number, got {raw!r}.")
+    if not math.isfinite(value) or value < 0 or (value == 0 and not allow_zero):
+        sys.exit(f"{name} must be a finite positive number, got {raw!r}.")
+    return value
+
 
 # ---- Caps (USD, which is how Anthropic bills). Override with environment variables. ----
-DAILY_CAP_USD = float(os.environ.get("OFFLOAD_DAILY_CAP_USD", "2.00"))      # all tools together
-CONFIRM_ABOVE_USD = float(os.environ.get("OFFLOAD_CONFIRM_ABOVE_USD", "0.25"))  # ask unless --yes
+DAILY_CAP_USD = _env_amount("OFFLOAD_DAILY_CAP_USD", 2.00)                              # all tools together
+CONFIRM_ABOVE_USD = _env_amount("OFFLOAD_CONFIRM_ABOVE_USD", 0.25, allow_zero=True)     # ask unless --yes
 EFFORT = "low"   # reading and extracting does not need deep reasoning; leaves room for the answer
 
 # USD per million tokens (input, output). Check https://platform.claude.com/docs/en/about-claude/pricing
@@ -67,15 +92,47 @@ def cost(model, tokens_in, tokens_out):
     return tokens_in / 1e6 * p_in + tokens_out / 1e6 * p_out
 
 
+class BudgetExceeded(SystemExit):
+    """Raised before an API call that would pass the daily cap. It is a SystemExit, so a tool
+    that does not catch it simply stops with the message; tools holding partial results catch it."""
+
+
 def _read_ledger():
+    """Return (today, data). Fails closed: if the ledger exists but cannot be read, stop instead
+    of starting from zero, because that would silently bypass the daily cap."""
     today = dt.date.today().isoformat()
-    data = {}
-    if LEDGER.exists():
-        try:
-            data = json.loads(LEDGER.read_text())
-        except json.JSONDecodeError:
-            data = {}
+    if not LEDGER.exists():
+        return today, {}
+    try:
+        raw = json.loads(LEDGER.read_text())
+        if not isinstance(raw, dict):
+            raise ValueError("expected a JSON object")
+        data = {}
+        for day, value in raw.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                    or not math.isfinite(value) or value < 0:
+                raise ValueError("invalid amount for " + str(day))
+            data[str(day)] = float(value)
+    except (OSError, ValueError) as e:
+        raise SystemExit(
+            f"The spend ledger {LEDGER} is unreadable ({e}).\n"
+            "Stopping so the daily cap cannot be bypassed. Check the file, or delete it to start "
+            "counting from zero, and run again.")
     return today, data
+
+
+@contextlib.contextmanager
+def _ledger_lock():
+    """Exclusive lock, so two runs in parallel cannot overwrite each other's spend."""
+    HOME.mkdir(parents=True, exist_ok=True)
+    with open(HOME / "usage.lock", "a") as handle:
+        if fcntl:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl:
+                fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def spent_today():
@@ -84,10 +141,17 @@ def spent_today():
 
 
 def record_spend(usd):
-    HOME.mkdir(parents=True, exist_ok=True)
-    today, data = _read_ledger()
-    data[today] = round(data.get(today, 0.0) + usd, 6)
-    LEDGER.write_text(json.dumps(data, indent=2))
+    if not math.isfinite(usd) or usd < 0:
+        return  # never let a bad number corrupt the ledger
+    with _ledger_lock():
+        today, data = _read_ledger()
+        data[today] = round(data.get(today, 0.0) + usd, 6)
+        cutoff = (dt.date.today() - dt.timedelta(days=LEDGER_KEEP_DAYS)).isoformat()
+        data = {day: value for day, value in data.items() if day >= cutoff}
+        # a temp name unique per process and thread, so even without the lock two writers never share one
+        tmp = LEDGER.with_name(f"{LEDGER.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        os.replace(tmp, LEDGER)  # atomic: a crash never leaves a half-written ledger
 
 
 def check_budget(estimate, assume_yes):
@@ -100,11 +164,17 @@ def check_budget(estimate, assume_yes):
             sys.exit("Cancelled.")
 
 
-def call(client, model, content, max_tokens, output_config=None):
+def call(client, model, content, max_tokens, output_config=None, reserve=None):
     """One Messages API call with the daily cap enforced and the spend recorded.
-    Returns (text, usd, stop_reason)."""
-    if spent_today() >= DAILY_CAP_USD:
-        sys.exit(f"Daily cap reached ({DAILY_CAP_USD} USD). Stopping.")
+    `reserve` is the estimated cost of THIS call (input + output); without it, the worst-case
+    output cost (max_tokens) is used. The call is refused if spent today plus the reserve would
+    pass the cap, so a run cannot go over the cap by a whole call. Returns (text, usd, stop_reason)."""
+    if reserve is None:
+        reserve = cost(model, 0, max_tokens)
+    spent = spent_today()
+    if spent + reserve > DAILY_CAP_USD:
+        raise BudgetExceeded(f"Daily cap ({DAILY_CAP_USD} USD) would be passed: {spent:.4f} USD spent today "
+                             f"and this call may cost up to {reserve:.4f} USD. Stopping.")
     config = {"effort": EFFORT}
     config.update(output_config or {})
     resp = client.messages.create(

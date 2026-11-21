@@ -152,7 +152,7 @@ def main():
             continue
         est = common.cost(args.model, tokens, MAX_OUTPUT_TOKENS)
         total_est += est
-        plan.append((p, content))
+        plan.append((p, content, est))
         print(f"  {p.name}: {tokens:,} input tokens, up to {est:.4f} USD")
 
     if not plan:
@@ -165,11 +165,15 @@ def main():
 
     # 2) Process
     total, rows = 0.0, []
-    for n, (p, content) in enumerate(plan, 1):
+    for n, (p, content, est_pdf) in enumerate(plan, 1):
         print(f"  [{n}/{len(plan)}] {p.name}...", file=sys.stderr)
         extra = {"format": schema(fields)} if fields else None
         try:
-            text, usd, stop = common.call(client, args.model, content, MAX_OUTPUT_TOKENS, output_config=extra)
+            text, usd, stop = common.call(client, args.model, content, MAX_OUTPUT_TOKENS,
+                                          output_config=extra, reserve=est_pdf)
+        except common.BudgetExceeded as stopped:
+            print(f"\n{stopped}\nThe results already paid for are kept; the remaining PDFs were not processed.")
+            break
         except Exception as e:
             print(f"  ERROR in {p.name}: {e.__class__.__name__}: {e}")
             continue

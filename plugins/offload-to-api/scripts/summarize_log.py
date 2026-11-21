@@ -85,20 +85,31 @@ def main():
 
     client = common.make_client()
     total, summaries = 0.0, []
-    for n, chunk in enumerate(chunks, 1):
-        print(f"  Analysing chunk {n}/{len(chunks)}...", file=sys.stderr)
-        prompt = CHUNK_PROMPT.format(n=n, total=len(chunks), text=chunk, lang=args.lang)
-        summary, usd, _ = common.call(client, args.model, prompt, MAX_OUTPUT_TOKENS)
-        summaries.append(summary)
-        total += usd
+    try:
+        for n, chunk in enumerate(chunks, 1):
+            print(f"  Analysing chunk {n}/{len(chunks)}...", file=sys.stderr)
+            prompt = CHUNK_PROMPT.format(n=n, total=len(chunks), text=chunk, lang=args.lang)
+            reserve = common.cost(args.model, len(prompt) / 3.5, MAX_OUTPUT_TOKENS)
+            summary, usd, _ = common.call(client, args.model, prompt, MAX_OUTPUT_TOKENS, reserve=reserve)
+            summaries.append(summary)
+            total += usd
 
-    if len(summaries) == 1:
-        report = summaries[0]
-    else:
-        blocks = "\n\n".join(f"--- Summary {i} ---\n{s}" for i, s in enumerate(summaries, 1))
-        report, usd, _ = common.call(client, args.model,
-                                     FINAL_PROMPT.format(summaries=blocks, lang=args.lang), MAX_OUTPUT_TOKENS)
-        total += usd
+        if len(summaries) == 1:
+            report = summaries[0]
+        else:
+            blocks = "\n\n".join(f"--- Summary {i} ---\n{s}" for i, s in enumerate(summaries, 1))
+            prompt = FINAL_PROMPT.format(summaries=blocks, lang=args.lang)
+            reserve = common.cost(args.model, len(prompt) / 3.5, MAX_OUTPUT_TOKENS)
+            report, usd, _ = common.call(client, args.model, prompt, MAX_OUTPUT_TOKENS, reserve=reserve)
+            total += usd
+    except common.BudgetExceeded as stop:
+        # keep what was already paid for instead of losing it
+        if summaries:
+            partial = path.with_name(path.stem + ".summary.partial.md")
+            partial.write_text("\n\n".join(f"## Chunk {i}\n{s}" for i, s in enumerate(summaries, 1)))
+            print(f"\n{stop}\nThe {len(summaries)} partial summaries already paid for are saved to: {partial}")
+            common.print_summary(real=total)
+        raise
 
     out = path.with_name(path.stem + ".summary.md")
     out.write_text(report)

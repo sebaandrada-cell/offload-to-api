@@ -51,6 +51,48 @@ Built-in guardrails:
 
 4. Set a monthly spend limit and turn off auto-reload at https://platform.claude.com/settings/limits and https://platform.claude.com/settings/billing. The scripts' caps are a second layer, not a replacement.
 
+## Update
+
+1. Pull the new version and run the installer again. It copies the new scripts and keeps your spend ledger and `.env`:
+
+   ```bash
+   git -C ~/offload-to-api-src pull
+   ```
+
+   ```bash
+   bash ~/offload-to-api-src/install.sh
+   ```
+
+2. Update the plugin in Claude Code, then restart it:
+
+   ```bash
+   claude plugin marketplace update offload-to-api
+   ```
+
+   ```bash
+   claude plugin update offload-to-api@offload-to-api
+   ```
+
+The plugin (the skill) and the scripts are separate: updating one does not update the other.
+
+## Uninstall
+
+```bash
+claude plugin uninstall offload-to-api@offload-to-api
+```
+
+```bash
+claude plugin marketplace remove offload-to-api
+```
+
+Then delete the scripts, the venv, the spend ledger and the optional `.env`, and the clone:
+
+```bash
+rm -rf ~/.offload-to-api ~/offload-to-api-src
+```
+
+If you created an API key just for this, revoke it at https://platform.claude.com/settings/keys. Summaries and reports the tools saved next to your files (`*.summary.md`, `*.answer.md`, `*.changes.md`, `*.map.json`, `table.csv`) stay where they are: delete the ones that contain personal data.
+
 ## Claude Code vs Cowork
 
 - **Claude Code** runs on your computer, so Claude runs the scripts itself and only reads the short result.
@@ -69,17 +111,47 @@ All options: `plugins/offload-to-api/skills/offload-to-api/references/tools.md`.
 - **PDFs are sent whole** to the Claude API, including for the cost estimate. Nothing inside a PDF can be masked.
 - Masking is pattern-based and **will miss things** (what it covers is listed at the top of `plugins/offload-to-api/scripts/masking.py`; for example, `--anonymize` does not cover IPv6 addresses or host names). Run `--dry-run` on a sample first (for configs it shows the exact diff that would be sent).
 - Sending employer or customer data to any external AI service may be against your organisation's policy. Check first.
-- Results are saved next to the original files. Delete them if they contain personal data.
+- Results are saved next to the original files. Delete them if they contain personal data. `*.summary.md` and `*.changes.md` are overwritten on each run for the same input; PDF results carry a timestamp and are not.
 
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OFFLOAD_DAILY_CAP_USD` | `2.00` | Daily cap across all tools |
-| `OFFLOAD_CONFIRM_ABOVE_USD` | `0.25` | Ask before spending more than this |
+| `OFFLOAD_DAILY_CAP_USD` | `2.00` | Daily cap across all tools. Must be a finite positive number. |
+| `OFFLOAD_CONFIRM_ABOVE_USD` | `0.25` | Ask before spending more than this (`0` always asks) |
 | `OFFLOAD_HOME` | `~/.offload-to-api` | Scripts, venv, spend ledger and optional `.env` |
 
+A value that is not a number (or is `nan`, `inf` or negative) stops the tool with a message instead of silently disabling the cap.
+
 Prices are hard-coded in `scripts/common.py`. Check them against https://platform.claude.com/docs/en/about-claude/pricing.
+
+## How the spend cap works, and its limits
+
+Every call is added to a ledger, `~/.offload-to-api/usage.json` (one total per day, the last 60 days). Before each call the tools check that today's total plus that call's estimated cost stays under the cap, and they stop if it would not. Several runs at once share the ledger safely (it is locked and written atomically).
+
+- **If the ledger is unreadable or damaged, the tools stop** and say so. They do not start from zero, because that would bypass the cap. Fix the file, or delete it to start counting from zero.
+- **If the cap is reached halfway through a run,** results already paid for are kept: finished PDFs and the table are saved, and a log summary is saved as `NAME.summary.partial.md`.
+- **It is a local protection, not a billing limit.** It only counts what these tools spend on this computer, in this user account. A call that fails after Anthropic has billed it (for example a timeout) cannot be recorded. Set a monthly spend limit in the Console as well.
+- Cost estimates assume about 3.5 characters per token. Text with many numbers, hex or non-English characters uses more tokens, so a run can cost more than its estimate. The per-call check bounds the overrun to one call.
+
+## Platforms and troubleshooting
+
+Tested on macOS with the system Python 3.9. It should work on Linux. It is not tested on Windows (the ledger lock is not available there, and the file picker is macOS only).
+
+| Problem | What to do |
+|---|---|
+| `python3 not found`, or a syntax error mentioning a newer Python | Install Python 3.9 or later and run `install.sh` again |
+| `pip` cannot download the SDK | Check your network or proxy and run `install.sh` again. The SDK is pinned below 1.0 because 1.x needs Python 3.10 or later. |
+| `Invalid API key` or an authentication error | Run `ant auth login` again. If you use a key in `~/.offload-to-api/.env`, check that it is valid and not expired. |
+| `ant: command not found` | Install the Anthropic CLI, or use a key in `~/.offload-to-api/.env` instead |
+| The tool says the spend ledger is unreadable | The file `~/.offload-to-api/usage.json` is damaged. Inspect it, or delete it to start counting from zero. |
+| `Daily cap ... would be passed` | You reached today's cap. Wait until tomorrow, use a cheaper model, or raise `OFFLOAD_DAILY_CAP_USD`. |
+| No file picker opens | The picker only exists on macOS. Pass the file path as an argument. |
+| `SKIPPED` for a PDF | It is over 30 MB or 100,000 tokens, encrypted or damaged. Split it or remove the password first. |
+
+## Reporting a security problem
+
+See `SECURITY.md`.
 
 ## Not affiliated
 

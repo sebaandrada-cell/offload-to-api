@@ -43,6 +43,7 @@ Authentication, one of:
 - Splits the file into chunks, summarises each and merges the summaries, saved as `NAME.summary.md`.
 - Passwords, SNMP communities, PSKs and tokens are always masked. `--anonymize` also masks IPs, emails and MACs.
 - Cap: 15 chunks of ~150,000 characters; beyond that, it reports that the rest was not analysed.
+- If the daily cap is reached halfway, the summaries already paid for are saved as `NAME.summary.partial.md`.
 
 ## compare_configs.py: configuration diffs
 

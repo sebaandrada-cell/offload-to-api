@@ -20,6 +20,54 @@ class SecretMasking(unittest.TestCase):
     def test_weak_secret_is_flagged(self):
         self.assertIn("<WEAK_SECRET>", common.mask_secrets("snmp community public rw"))
 
+    # Regression tests for the gaps found in the 2026-11-21 audit
+    def test_names_with_underscores_and_prefixes(self):
+        for text, secret in (("db_password=Sup3rS3cret", "Sup3rS3cret"),
+                             ("client_secret: abc123def", "abc123def"),
+                             ("AWS_SECRET_ACCESS_KEY=AKIAEXAMPLE0000XXXX", "AKIAEXAMPLE0000XXXX"),
+                             ("ssh_key=AAAAB3NzaC1yc2E", "AAAAB3NzaC1yc2E"),
+                             ("pre-shared-key MiClaveVPN2026", "MiClaveVPN2026")):
+            self.assertNotIn(secret, common.mask_secrets(text), text)
+
+    def test_cisco_typed_secrets_hide_the_hash_not_the_type(self):
+        for text, secret in (("enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0", "$1$mERr$hx5rVt7rPNoS4wqbXKX7m0"),
+                             ("username admin privilege 15 secret 9 $9$abcDEF123", "$9$abcDEF123"),
+                             ("password 7 0822455D0A16", "0822455D0A16")):
+            out = common.mask_secrets(text)
+            self.assertNotIn(secret, out, text)
+            self.assertIn("<SECRET>", out, text)
+
+    def test_quoted_values_with_spaces(self):
+        out = common.mask_secrets('password: "mi frase larga con espacios"')
+        self.assertNotIn("frase", out)
+        self.assertEqual(out, 'password: "<SECRET>"')
+
+    def test_bearer_basic_url_credentials_and_tokens(self):
+        for text, secret in (("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc.def", "eyJhbGci"),
+                             # built in parts so secret scanners do not flag this fake value
+                             ("curl -H 'Authorization: Basic " + "dXNlcjpw" + "YXNzd29yZA==" + "'", "dXNlcjpw"),
+                             ("url = https://admin:S3cretPw@10.1.1.1/api", "S3cretPw"),
+                             ("token=ghp_" + "a" * 36, "ghp_aaaa")):
+            self.assertNotIn(secret, common.mask_secrets(text), text)
+
+    def test_pem_block_is_masked(self):
+        pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----"
+        self.assertEqual(common.mask_secrets("before\n" + pem + "\nafter"), "before\n<SECRET>\nafter")
+
+    def test_a_fake_placeholder_is_not_trusted(self):
+        # only our own placeholders are skipped; a value in angle brackets is still a secret
+        self.assertNotIn("hunter2", common.mask_secrets("password <hunter2>"))
+
+    def test_normal_text_is_left_alone(self):
+        for text in ("interface GE3", "ntp server 10.0.0.1", "hostname edge-bcn", "monkey=banana",
+                     "keyboard layout us", "description WAN-MPLS", "username: admin", "primary_key id",
+                     "firewall rule 10 allow tcp any 10.0.0.0/8 port 443"):
+            self.assertEqual(common.mask_secrets(text), text)
+
+    def test_masking_is_idempotent(self):
+        once = common.mask_secrets("password=hunter2 and enable secret 5 $1$abc$def")
+        self.assertEqual(common.mask_secrets(once), once)
+
     def test_anonymize(self):
         out = common.anonymize("from 10.1.1.2/30 by a@b.com mac aa:bb:cc:dd:ee:ff")
         self.assertEqual(out, "from <IP> by <EMAIL> mac <MAC>")

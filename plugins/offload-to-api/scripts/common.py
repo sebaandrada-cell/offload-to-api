@@ -32,11 +32,9 @@ MODELS = {
     "opus": ("claude-opus-5-5", 4.00, 20.00),
 }
 
-# Passwords, SNMP communities, pre-shared keys, tokens... are ALWAYS masked before sending.
-SECRET_PATTERN = re.compile(
-    r'(?i)\b(community|password|passwd|secret|pre-shared-key|psk|api[-_]?key|token|key)'
-    r'"?(\s+|\s*[=:]\s*)"?([^\s",}]+)')
-WEAK_SECRETS = {"public", "private", "admin", "password", "cisco", "changeme", "123456"}
+# Passwords, SNMP communities, pre-shared keys, tokens... are ALWAYS masked before sending
+# (see masking.py for what is covered).
+from masking import WEAK_SECRETS, mask_secrets  # noqa: E402,F401
 
 ANON_PATTERNS = [
     ("IP", r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b"),
@@ -56,19 +54,6 @@ def make_client():
                 if key:
                     return anthropic.Anthropic(api_key=key, max_retries=1, timeout=120)
     return anthropic.Anthropic(max_retries=1, timeout=120)
-
-
-def mask_secrets(text):
-    """Replace each secret value with <SECRET>, or <WEAK_SECRET> for a known default,
-    so the model can still warn about it without seeing it."""
-    def repl(m):
-        value = m.group(3)
-        if value.startswith("<") and value.endswith(">"):
-            return m.group(0)
-        mark = "<WEAK_SECRET>" if value.lower() in WEAK_SECRETS else "<SECRET>"
-        start, end = m.start(3) - m.start(0), m.end(3) - m.start(0)
-        return m.group(0)[:start] + mark + m.group(0)[end:]
-    return SECRET_PATTERN.sub(repl, text)
 
 
 def anonymize(text):

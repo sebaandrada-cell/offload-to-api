@@ -67,7 +67,7 @@ All options: `plugins/offload-to-api/skills/offload-to-api/references/tools.md`.
 ## Privacy, read this
 
 - **PDFs are sent whole** to the Claude API, including for the cost estimate. Nothing inside a PDF can be masked.
-- Masking is pattern-based and **will miss things**. Run `--dry-run` on a sample first (for configs it shows the exact diff that would be sent).
+- Masking is pattern-based and **will miss things** (what it covers is listed at the top of `plugins/offload-to-api/scripts/masking.py`; for example, `--anonymize` does not cover IPv6 addresses or host names). Run `--dry-run` on a sample first (for configs it shows the exact diff that would be sent).
 - Sending employer or customer data to any external AI service may be against your organisation's policy. Check first.
 - Results are saved next to the original files. Delete them if they contain personal data.
 

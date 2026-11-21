@@ -70,16 +70,8 @@ def mask_pair(a, b, anonymize=False):
             inverse[value] = f"<{label}_{counters[label]}>"
         return inverse[value]
 
-    def mask_secret(m):
-        value = m.group(3)
-        if value.startswith("<") and value.endswith(">"):
-            return m.group(0)
-        label = "WEAK_SECRET" if value.lower() in common.WEAK_SECRETS else "SECRET"
-        start, end = m.start(3) - m.start(0), m.end(3) - m.start(0)
-        return m.group(0)[:start] + placeholder(label, value) + m.group(0)[end:]
-
     def substitute(text):
-        text = common.SECRET_PATTERN.sub(mask_secret, text)
+        text = common.mask_secrets(text, placeholder)
         for label, pattern in patterns:
             text = re.sub(pattern, lambda m, lb=label: placeholder(lb, m.group(0)), text)
         return text
@@ -152,8 +144,11 @@ def main():
     print(f"\nSaved to: {out}")
     if mapping:
         p_map = p_after.with_name(p_after.stem + ".map.json")
-        p_map.write_text(json.dumps(mapping, indent=2, ensure_ascii=False))
-        os.chmod(p_map, 0o600)
+        # Created with mode 600 from the start, so there is no window in which others can read it
+        fd = os.open(p_map, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(mapping, indent=2, ensure_ascii=False))
+        os.chmod(p_map, 0o600)  # also fixes the mode if the file already existed
         print(f"Placeholder map (stays on this machine, never sent): {p_map}")
     common.print_summary(real=usd)
 

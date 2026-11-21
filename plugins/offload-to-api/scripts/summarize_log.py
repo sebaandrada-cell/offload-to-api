@@ -105,16 +105,23 @@ def main():
     except common.BudgetExceeded as stop:
         # keep what was already paid for instead of losing it
         if summaries:
-            partial = path.with_name(path.stem + ".summary.partial.md")
-            partial.write_text("\n\n".join(f"## Chunk {i}\n{s}" for i, s in enumerate(summaries, 1)))
-            print(f"\n{stop}\nThe {len(summaries)} partial summaries already paid for are saved to: {partial}")
+            body = "\n\n".join(f"## Chunk {i}\n{s}" for i, s in enumerate(summaries, 1))
+            print(f"\n{stop}")
+            try:
+                partial = common.write_new(path.with_name(f"{path.stem}.{common.stamp()}.summary.partial.md"), body)
+                print(f"The {len(summaries)} partial summaries already paid for are saved to: {partial}")
+            except OSError as e:
+                print(f"The partial summaries could not be saved ({e}); they are printed below.\n\n{body}")
             common.print_summary(real=total)
         raise
 
-    out = path.with_name(path.stem + ".summary.md")
-    out.write_text(report)
+    # print first: if the folder is read-only the report is not lost after paying for it
     print("\n" + report)
-    print(f"\nSaved to: {out}")
+    try:
+        out = common.write_new(path.with_name(f"{path.stem}.{common.stamp()}.summary.md"), report)
+        print(f"\nSaved to: {out}")
+    except OSError as e:
+        print(f"\nWARNING: the report could not be saved ({e}). It is printed above.")
     common.print_summary(real=total)
 
 

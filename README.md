@@ -11,7 +11,7 @@ A plugin for Claude Code and Claude Cowork. When you ask Claude to read a long P
 | You ask | Script | Typical cost |
 |---|---|---|
 | "Summarize this 40-page contract" / "What is the notice period?" | `read_pdf.py` | < 0.001 USD per page (Haiku) |
-| "Extract vendor, date and total from these invoices" | `read_pdf.py --fields` → `table.csv` | < 0.001 USD per page |
+| "Extract vendor, date and total from these invoices" | `read_pdf.py --fields` → `table.YYYY-MM-DD_HHMMSS.csv` | < 0.001 USD per page |
 | "What's failing in this 50k-line firewall export?" | `summarize_log.py` | a few cents |
 | "Compare these two configs and tell me the risks" | `compare_configs.py` | 0.01–0.04 USD (Sonnet) |
 
@@ -91,7 +91,7 @@ Then delete the scripts, the venv, the spend ledger and the optional `.env`, and
 rm -rf ~/.offload-to-api ~/offload-to-api-src
 ```
 
-If you created an API key just for this, revoke it at https://platform.claude.com/settings/keys. Summaries and reports the tools saved next to your files (`*.summary.md`, `*.answer.md`, `*.changes.md`, `*.map.json`, `table.csv`) stay where they are: delete the ones that contain personal data.
+If you created an API key just for this, revoke it at https://platform.claude.com/settings/keys. Summaries and reports the tools saved next to your files (`*.summary.md`, `*.answer.md`, `*.changes.md`, `*.map.json`, `table.*.csv`) stay where they are: delete the ones that contain personal data.
 
 ## Claude Code vs Cowork
 
@@ -111,7 +111,7 @@ All options: `plugins/offload-to-api/skills/offload-to-api/references/tools.md`.
 - **PDFs are sent whole** to the Claude API, including for the cost estimate. Nothing inside a PDF can be masked.
 - Masking is pattern-based and **will miss things** (what it covers is listed at the top of `plugins/offload-to-api/scripts/masking.py`; for example, `--anonymize` does not cover IPv6 addresses or host names). Run `--dry-run` on a sample first (for configs it shows the exact diff that would be sent).
 - Sending employer or customer data to any external AI service may be against your organisation's policy. Check first.
-- Results are saved next to the original files. Delete them if they contain personal data. `*.summary.md` and `*.changes.md` are overwritten on each run for the same input; PDF results carry a timestamp and are not.
+- Results are saved next to the original files. Delete them if they contain personal data. Nothing is overwritten: every run creates a new file with a timestamp in its name (`NAME.2026-11-21_164137.summary.md`), readable only by you (mode 600), and a name that is already taken gets `-2`, `-3`... The tools never follow a symbolic link to write. If the folder is read-only, the result is still printed on screen.
 
 ## Configuration
 

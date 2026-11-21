@@ -29,7 +29,7 @@ Authentication, one of:
 - `PATH`: one or more PDFs, or a folder (non-recursive). On macOS, no path opens a file picker.
 - No mode flag: summary, saved as `NAME.YYYY-MM-DD_HHMMSS.summary.md` next to the PDF.
 - `--question`: answer citing pages, saved as `NAME.YYYY-MM-DD_HHMMSS.answer.md`.
-- `--fields`: `table.csv` in the PDFs' folder, one row per PDF (`;` separator, UTF-8 with BOM).
+- `--fields`: `table.YYYY-MM-DD_HHMMSS.csv` in the PDFs' folder, one row per PDF (`;` separator, UTF-8 with BOM).
 - Privacy: the PDF is sent whole, also for `--dry-run` (token counting). Summaries and answers avoid copying ID numbers, IBANs, card numbers, phones, emails, addresses and dates of birth, and a local filter masks common formats before saving. `--with-ids` disables both. `--fields` copies exactly what is requested.
 - Caps: 20 PDFs, 30 MB and 100,000 tokens per PDF; larger ones are reported as `SKIPPED`.
 - Typical cost with Haiku: under 0.001 USD per page.
@@ -40,10 +40,10 @@ Authentication, one of:
 ~/.offload-to-api/venv/bin/python ~/.offload-to-api/scripts/summarize_log.py FILE --anonymize [--lang LANG] [--dry-run] [--yes]
 ```
 
-- Splits the file into chunks, summarises each and merges the summaries, saved as `NAME.summary.md`.
+- Splits the file into chunks, summarises each and merges the summaries, saved as `NAME.YYYY-MM-DD_HHMMSS.summary.md`.
 - Passwords, SNMP communities, PSKs and tokens are always masked. `--anonymize` also masks IPs, emails and MACs.
 - Cap: 15 chunks of ~150,000 characters; beyond that, it reports that the rest was not analysed.
-- If the daily cap is reached halfway, the summaries already paid for are saved as `NAME.summary.partial.md`.
+- If the daily cap is reached halfway, the summaries already paid for are saved as `NAME.YYYY-MM-DD_HHMMSS.summary.partial.md`.
 
 ## compare_configs.py: configuration diffs
 
@@ -51,7 +51,7 @@ Authentication, one of:
 ~/.offload-to-api/venv/bin/python ~/.offload-to-api/scripts/compare_configs.py BEFORE AFTER --anonymize [--note "context"] [--lang LANG] [--dry-run] [--yes]
 ```
 
-- Sends only the diff. The result, saved as `AFTER.changes.md`, has a summary, a change table, HIGH/MEDIUM/LOW risks, checks to run and rollback steps.
+- Sends only the diff. The result, saved as `AFTER.YYYY-MM-DD_HHMMSS.changes.md`, has a summary, a change table, HIGH/MEDIUM/LOW risks, checks to run and rollback steps.
 - Identical files: no API call, cost 0.
-- Placeholders are numbered and consistent across both files (`<IP_1>`). The real-value map is saved as `AFTER.map.json` (mode 600) and must never be read or sent.
+- Placeholders are numbered and consistent across both files (`<IP_1>`). The real-value map is saved as `AFTER.YYYY-MM-DD_HHMMSS.map.json` (same timestamp as the report, mode 600) and must never be read or sent.
 - `--dry-run` prints the exact diff that would be sent, and sends nothing.

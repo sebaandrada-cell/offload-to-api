@@ -21,7 +21,6 @@ Usage:
 import argparse
 import base64
 import csv
-import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -194,20 +193,29 @@ def main():
                 text = mask_personal(text)
             if args.question:
                 text = f"**Question:** {args.question}\n\n{text}"
-            stamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")  # never overwrite earlier results
-            out = p.with_name(f"{p.stem}.{stamp}{'.answer.md' if args.question else '.summary.md'}")
-            out.write_text(text)
-            print(f"\n===== {p.name} =====\n{text}\nSaved to: {out}")
+            # timestamped, mode 600, never overwrites an earlier result; print first so a
+            # read-only folder does not lose what was already paid for
+            print(f"\n===== {p.name} =====\n{text}")
+            suffix = ".answer.md" if args.question else ".summary.md"
+            try:
+                out = common.write_new(p.with_name(f"{p.stem}.{common.stamp()}{suffix}"), text)
+                print(f"Saved to: {out}")
+            except OSError as e:
+                print(f"WARNING: could not save the result ({e}). It is printed above.")
 
     if fields and rows:
         folder = root if root.is_dir() else root.parent
-        out_csv = folder / "table.csv"
         # utf-8-sig and ";" so Excel in most European locales opens it with a double click
-        with out_csv.open("w", newline="", encoding="utf-8-sig") as f:
-            w = csv.DictWriter(f, fieldnames=["file", *fields], delimiter=";")
-            w.writeheader()
-            w.writerows(rows)
-        print(f"\nTable with {len(rows)} rows saved to: {out_csv}")
+        try:
+            handle, out_csv = common.open_new(folder / f"table.{common.stamp()}.csv",
+                                              encoding="utf-8-sig", newline="")
+            with handle:
+                w = csv.DictWriter(handle, fieldnames=["file", *fields], delimiter=";")
+                w.writeheader()
+                w.writerows(rows)
+            print(f"\nTable with {len(rows)} rows saved to: {out_csv}")
+        except OSError as e:
+            print(f"\nWARNING: could not save the table ({e}). Rows: {rows}")
 
     common.print_summary(real=total)
 

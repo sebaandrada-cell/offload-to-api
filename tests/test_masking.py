@@ -73,6 +73,60 @@ class SecretMasking(unittest.TestCase):
         self.assertEqual(out, "from <IP> by <EMAIL> mac <MAC>")
 
 
+class SecondAudit(unittest.TestCase):
+    """Regression tests for the second 2026-11-21 audit. Exact output, so a mask that eats text it
+    should keep (such as the `=` or the rest of a log line) also fails."""
+
+    EXACT = (
+        ("password = my long pass phrase", "password = <SECRET>"),
+        ("password=abc user=bob", "password=<SECRET> user=bob"),
+        ("2026-11-21 ERROR login failed user=bob password=hunter2xx from 10.0.0.5",
+         "2026-11-21 ERROR login failed user=bob password=<SECRET> from 10.0.0.5"),
+        ("  db_password: another secret phrase", "  db_password: <SECRET>"),
+        ("- password: phrase in a yaml list", "- password: <SECRET>"),
+        ("password:\n  onTheNextLine", "password:\n  <SECRET>"),
+        ('{"password": "a\\"b\\"c"}', '{"password": "<SECRET>"}'),
+        ('signingKey: "k3y-SUPER"', 'signingKey: "<SECRET>"'),
+        ("hmacKey=abcdef123", "hmacKey=<SECRET>"),
+        ("sessionKey = ZZZ999", "sessionKey = <SECRET>"),
+        ("pw=abc999 user=bob", "pw=<SECRET> user=bob"),
+        ("cookie=SESSION123456", "cookie=<SECRET>"),
+        ('clave = "ZZZ-fake"', 'clave = "<SECRET>"'),
+        ("contraseña: hunter2xx", "contraseña: <SECRET>"),
+        ("wpa-psk ascii 7 0822455D0A16544541", "wpa-psk ascii 7 <SECRET>"),
+        ("postgres://admin:p@ss@db.internal:5432/x", "postgres://admin:<SECRET>@db.internal:5432/x"),
+        ("radius-server key MyRadiusKey", "radius-server key <SECRET>"),
+        # built in parts so secret scanners do not join it with the PEM test above
+        ("-----BEGIN PGP PRIVATE KEY" + " BLOCK-----\nl1\nl2\n-----END PGP PRIVATE " + "KEY" + " BLOCK-----",
+         "<SECRET>"),
+    )
+
+    def test_exact_output(self):
+        for text, expected in self.EXACT:
+            self.assertEqual(common.mask_secrets(text), expected, text)
+
+    def test_tokens_with_no_name_in_front(self):
+        # every fake token is built in parts so secret scanners do not flag the test file
+        for token in ("github" + "_pat_" + "1" * 30, "gl" + "pat-" + "a" * 24, "sk-" + "proj-" + "a" * 36,
+                      "rk" + "_live_" + "a" * 24, "AI" + "za" + "b" * 35, "hf" + "_" + "c" * 34,
+                      "re" + "_AbCdEfGh_" + "d" * 24, "apify" + "_api_" + "e" * 24, "sb" + "_secret_" + "f" * 24,
+                      "npm" + "_" + "g" * 36):
+            self.assertEqual(common.mask_secrets("x " + token + " y"), "x <SECRET> y", token)
+
+    def test_ordinary_sentences_are_left_alone(self):
+        for text in ("pass the ball to me", "la clave de acceso es importante", "sig mismatch",
+                     "foreign_key: user_id", "api_key: <SECRET>"):
+            self.assertEqual(common.mask_secrets(text), text)
+
+    def test_long_lines_stay_fast(self):
+        import time
+        for line in ("a." * 100000, "x-" * 100000, "key-" * 50000, "https://u:" + "p@" * 50000 + "host/x",
+                     "password " * 22000):
+            start = time.time()
+            common.mask_secrets(line)
+            self.assertLess(time.time() - start, 5, line[:20])
+
+
 class ConfigPairMasking(unittest.TestCase):
     def test_placeholders_are_consistent_and_changes_visible(self):
         a = "ip address 10.0.0.1\nntp 10.0.0.9\nsnmp community s3cret ro\n"

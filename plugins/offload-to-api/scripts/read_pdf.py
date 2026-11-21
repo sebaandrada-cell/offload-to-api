@@ -23,7 +23,6 @@ import base64
 import csv
 import datetime as dt
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -63,23 +62,9 @@ numbers, card numbers, phone numbers, emails, full postal addresses or dates of 
 Only say that they appear (for example: "the holder's ID number appears"). People's \
 names and their role (holder, beneficiary...) may be included."""
 
-# Local safety net: if the model copies one anyway, it is masked before saving.
-PERSONAL_PATTERNS = [
-    (r"\b[A-Z]{2}\d{2}(?:[ ]?\d{4}){4,7}(?:[ ]?\d{1,3})?\b", "<IBAN>"),
-    (r"\b(?:\d{4}[ -]?){3}\d{4}\b", "<CARD>"),
-    (r"\b\d{3}-\d{2}-\d{4}\b", "<SSN>"),
-    (r"\b[XYZ]-?\d{7}-?[A-Z]\b", "<ID>"),          # Spanish NIE
-    (r"\b\d{8}-?[A-Z]\b", "<ID>"),                 # Spanish DNI
-    (r"[\w.+-]+@[\w-]+\.[\w.-]+", "<EMAIL>"),
-    (r"\+\d{1,3}[ .-]?\d{2,4}(?:[ .-]?\d{2,4}){2,4}\b", "<PHONE>"),  # international format
-    (r"(?<![\d.,/])[6789]\d{2}[ ]?\d{3}[ ]?\d{3}(?![\d.,/])", "<PHONE>"),  # Spanish 9-digit
-]
-
-
-def mask_personal(text):
-    for pattern, mark in PERSONAL_PATTERNS:
-        text = re.sub(pattern, mark, text)
-    return text
+# Local safety net: if the model copies a personal identifier anyway, it is masked before
+# saving. The engine (with check-digit validation) is in personal.py.
+from personal import mask_personal  # noqa: E402,F401
 
 
 def list_pdfs(path):

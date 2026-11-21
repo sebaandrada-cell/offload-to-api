@@ -102,6 +102,50 @@ class PersonalMasking(unittest.TestCase):
             self.assertEqual(mask_personal(text), text)
 
 
+class PersonalFormats(unittest.TestCase):
+    """Regression tests for the gaps found in the 2026-11-21 audit (phones and ID formats)."""
+
+    def check(self, texts, secret_parts):
+        for text in texts:
+            out = mask_personal(text)
+            for part in secret_parts:
+                self.assertNotIn(part, out, text)
+
+    def test_spanish_dni_formats(self):
+        self.check(["DNI 12345678Z", "DNI 12.345.678-Z", "DNI 12345678 z", "DNI 12.345.678 Z", "dni 12345678-Z"],
+                   ["12345678", "12.345.678", "345.678"])
+
+    def test_spanish_nie_formats(self):
+        self.check(["NIE X1234567L", "NIE X-1234567-L", "NIE x1234567l", "NIE X 1234567 L"], ["1234567"])
+
+    def test_a_mistyped_contiguous_id_is_still_masked(self):
+        self.assertNotIn("1234567A", mask_personal("NIE X1234567A"))
+
+    def test_iban_any_country_with_or_without_spaces(self):
+        self.check(["IBAN ES91 2100 0418 4502 0005 1332", "iban ES9121000418450200051332",
+                    "IBAN GB82 WEST 1234 5698 7654 32"], ["2100", "WEST", "4502"])
+        self.assertEqual(mask_personal("cuenta es91 2100 0418 4502 0005 1332 para el recibo"),
+                         "cuenta <IBAN> para el recibo")
+
+    def test_cards_including_amex(self):
+        self.check(["tarjeta 4111 1111 1111 1111", "amex 3782 822463 10005", "visa 4111-1111-1111-1111"],
+                   ["4111", "3782", "822463"])
+
+    def test_spanish_phone_formats(self):
+        self.check(["tel 612345678", "tel 612 345 678", "tel 612 34 56 78", "tel 612-345-678", "tel 612.345.678",
+                    "tel 91 234 56 78", "tel +34 612 345 678", "tel 0034 612345678", "tel (+34) 612 345 678"],
+                   ["612", "345", "91 234"])
+
+    def test_international_phone(self):
+        self.assertNotIn("7946", mask_personal("tel +44 20 7946 0958"))
+
+    def test_numbers_and_codes_that_are_not_personal_stay(self):
+        for text in ("CUPS ES0031405447429023GB0F", "Total 29,900000 EUR/kW", "Referencia 9424410DF2892C0018HL",
+                     "Fecha 16/10/2026", "Importe 1.234.567,89 EUR", "Importe 600.000,00 EUR",
+                     "Plazo 2026-11-20 10:01:22", "Pagos 4 de 12 meses", "Total 123456789012 euros"):
+            self.assertEqual(mask_personal(text), text)
+
+
 class Costs(unittest.TestCase):
     def test_cost(self):
         self.assertAlmostEqual(common.cost("haiku", 1_000_000, 1_000_000), 0.60)

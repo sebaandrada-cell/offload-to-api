@@ -208,6 +208,34 @@ def pick_files(prompt, multiple=False, pdf_only=False):
     return [p for p in r.stdout.splitlines() if p.strip()]
 
 
+def stamp():
+    """Timestamp used in output file names, e.g. 2026-11-21_164137."""
+    return dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+
+def open_new(path, encoding="utf-8", newline=None):
+    """Create a NEW file with mode 600 and return (handle, final_path).
+    It never overwrites an existing file (a taken name gets -2, -3...) and never follows a
+    symbolic link, because O_EXCL fails on any existing path, links included."""
+    path = Path(path)
+    for n in range(1, 100):
+        candidate = path if n == 1 else path.with_name(f"{path.stem}-{n}{path.suffix}")
+        try:
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            continue
+        return os.fdopen(fd, "w", encoding=encoding, newline=newline), candidate
+    raise SystemExit(f"Could not find a free file name for {path}")
+
+
+def write_new(path, text):
+    """Write text to a new file (see open_new) and return its final path."""
+    handle, final = open_new(path)
+    with handle:
+        handle.write(text)
+    return final
+
+
 def print_summary(estimate=None, real=None):
     if estimate is not None:
         print(f"Max estimated cost: {estimate:.4f} USD | spent today: {spent_today():.4f} / {DAILY_CAP_USD} USD")

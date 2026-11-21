@@ -9,7 +9,7 @@ If the files are identical, the API is not called.
 
 Secrets are always masked with numbered placeholders that stay consistent across
 both files (<SECRET_1>, <IP_2>...), so a change is still visible in the diff.
-The placeholder -> real value map stays on your machine (NAME.map.json, mode 600).
+The placeholder -> real value map stays on your machine (NAME.TIMESTAMP.map.json, mode 600).
 
 Usage:
   compare_configs.py BEFORE AFTER [--model haiku|sonnet|opus] [--anonymize]
@@ -18,7 +18,6 @@ Usage:
 import argparse
 import difflib
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -138,18 +137,20 @@ def main():
     if stop == "refusal":
         sys.exit(f"The model declined the request (cost {usd:.4f} USD). Try --anonymize or another model.")
 
-    out = p_after.with_name(p_after.stem + ".changes.md")
-    out.write_text(report)
+    # print first: if the folder is read-only the report is not lost after paying for it.
+    # Files get a timestamp, are created with mode 600 and never overwrite an earlier run;
+    # the map shares the report's timestamp so the two stay paired.
     print("\n" + report)
-    print(f"\nSaved to: {out}")
-    if mapping:
-        p_map = p_after.with_name(p_after.stem + ".map.json")
-        # Created with mode 600 from the start, so there is no window in which others can read it
-        fd = os.open(p_map, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(mapping, indent=2, ensure_ascii=False))
-        os.chmod(p_map, 0o600)  # also fixes the mode if the file already existed
-        print(f"Placeholder map (stays on this machine, never sent): {p_map}")
+    run = common.stamp()
+    try:
+        out = common.write_new(p_after.with_name(f"{p_after.stem}.{run}.changes.md"), report)
+        print(f"\nSaved to: {out}")
+        if mapping:
+            p_map = common.write_new(p_after.with_name(f"{p_after.stem}.{run}.map.json"),
+                                     json.dumps(mapping, indent=2, ensure_ascii=False))
+            print(f"Placeholder map (stays on this machine, never sent): {p_map}")
+    except OSError as e:
+        print(f"\nWARNING: the report could not be saved ({e}). It is printed above.")
     common.print_summary(real=usd)
 
 

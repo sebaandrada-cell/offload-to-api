@@ -125,5 +125,58 @@ class CallAndCap(LedgerTestCase):
         client.messages.create.assert_not_called()
 
 
+class NewFiles(unittest.TestCase):
+    """Output files: never overwritten, mode 600, symbolic links never followed."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_stamp_format(self):
+        import re
+        self.assertRegex(common.stamp(), r"^\d{4}-\d{2}-\d{2}_\d{6}$")
+
+    def test_creates_a_file_with_mode_600(self):
+        final = common.write_new(self.dir / "report.md", "hello")
+        self.assertEqual(final.read_text(), "hello")
+        self.assertEqual(final.stat().st_mode & 0o777, 0o600)
+
+    def test_an_existing_file_is_never_overwritten(self):
+        first = common.write_new(self.dir / "report.md", "first")
+        second = common.write_new(self.dir / "report.md", "second")
+        third = common.write_new(self.dir / "report.md", "third")
+        self.assertEqual([p.name for p in (first, second, third)], ["report.md", "report-2.md", "report-3.md"])
+        self.assertEqual((first.read_text(), second.read_text(), third.read_text()), ("first", "second", "third"))
+
+    def test_a_symlink_is_not_followed(self):
+        victim = self.dir / "victim.txt"
+        victim.write_text("keep me")
+        (self.dir / "report.md").symlink_to(victim)
+        final = common.write_new(self.dir / "report.md", "new")
+        self.assertEqual(victim.read_text(), "keep me")
+        self.assertEqual(final.name, "report-2.md")
+
+    def test_open_new_supports_csv_options(self):
+        handle, final = common.open_new(self.dir / "table.csv", encoding="utf-8-sig", newline="")
+        with handle:
+            handle.write("a;b\r\n")
+        self.assertTrue(final.read_bytes().startswith(b"\xef\xbb\xbf"))  # BOM for Excel
+
+    def test_a_read_only_folder_raises_oserror_so_tools_can_still_print(self):
+        locked = self.dir / "locked"
+        locked.mkdir()
+        locked.chmod(0o500)
+        try:
+            if os.access(locked, os.W_OK):
+                self.skipTest("running with privileges that ignore folder permissions")
+            with self.assertRaises(OSError):
+                common.write_new(locked / "report.md", "x")
+        finally:
+            locked.chmod(0o700)
+
+
 if __name__ == "__main__":
     unittest.main()

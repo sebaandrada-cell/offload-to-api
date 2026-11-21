@@ -16,7 +16,8 @@ venv/
 *.answer.md
 *.changes.md
 *.map.json
-table.csv
+table*.csv
+*.summary.partial.md
 
 # macOS
 .DS_Store
